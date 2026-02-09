@@ -29,10 +29,15 @@ if [ ! -d "node_modules" ]; then
 fi
 
 # ── Kill any stale Richy server processes ───────────────────────────
-STALE_PIDS=$(lsof -i :3000 -sST:LISTEN -t 2>/dev/null)
+# Kill by port (catches the listening server)
+PORT_PIDS=$(lsof -i :3000 -sST:LISTEN -t 2>/dev/null)
+# Kill by project path (catches zombie background workers on any port)
+PROJECT_DIR="$(pwd)"
+NODE_PIDS=$(pgrep -f "node.*${PROJECT_DIR}" 2>/dev/null || true)
+STALE_PIDS=$(echo -e "${PORT_PIDS}\n${NODE_PIDS}" | sort -u | grep -v '^$')
 if [ -n "$STALE_PIDS" ]; then
   echo ""
-  echo "  🧹 Killing old server on port 3000 (PIDs: $STALE_PIDS)..."
+  echo "  🧹 Killing old Richy processes..."
   echo "$STALE_PIDS" | xargs kill -9 2>/dev/null
   sleep 1
 fi
