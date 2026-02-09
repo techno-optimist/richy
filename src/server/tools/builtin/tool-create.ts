@@ -35,39 +35,47 @@ export async function executeCustomTool(
 ): Promise<{ success: boolean; output: string }> {
   const logs: string[] = [];
 
-  const sandbox = {
-    input,
-    fetch: globalThis.fetch,
-    URL,
-    URLSearchParams,
-    console: {
-      log: (...args: any[]) => logs.push(args.map(String).join(" ")),
-      error: (...args: any[]) =>
-        logs.push("[ERROR] " + args.map(String).join(" ")),
-    },
-    JSON,
-    Math,
-    Date,
-    parseInt,
-    parseFloat,
-    isNaN,
-    Array,
-    Object,
-    String,
-    Number,
-    Boolean,
-    Map,
-    Set,
-    RegExp,
-    Error,
-    Promise,
-    Buffer,
-    TextEncoder,
-    TextDecoder,
-    setTimeout: globalThis.setTimeout,
-    encodeURIComponent,
-    decodeURIComponent,
-  };
+  // Use Object.create(null) to prevent __proto__ escape
+  const consoleFns = Object.create(null);
+  consoleFns.log = (...args: any[]) => logs.push(args.map(String).join(" "));
+  consoleFns.error = (...args: any[]) =>
+    logs.push("[ERROR] " + args.map(String).join(" "));
+  Object.freeze(consoleFns);
+
+  const sandbox = Object.create(null);
+  sandbox.input = input;
+  sandbox.console = consoleFns;
+  sandbox.URL = URL;
+  sandbox.URLSearchParams = URLSearchParams;
+  sandbox.JSON = JSON;
+  sandbox.Math = Math;
+  sandbox.Date = Date;
+  sandbox.parseInt = parseInt;
+  sandbox.parseFloat = parseFloat;
+  sandbox.isNaN = isNaN;
+  sandbox.Array = Array;
+  sandbox.Object = Object;
+  sandbox.String = String;
+  sandbox.Number = Number;
+  sandbox.Boolean = Boolean;
+  sandbox.Map = Map;
+  sandbox.Set = Set;
+  sandbox.RegExp = RegExp;
+  sandbox.Error = Error;
+  sandbox.Promise = Promise;
+  sandbox.TextEncoder = TextEncoder;
+  sandbox.TextDecoder = TextDecoder;
+  sandbox.encodeURIComponent = encodeURIComponent;
+  sandbox.decodeURIComponent = decodeURIComponent;
+  // Explicitly block dangerous globals
+  sandbox.fetch = undefined;
+  sandbox.setTimeout = undefined;
+  sandbox.setInterval = undefined;
+  sandbox.Buffer = undefined;
+  sandbox.require = undefined;
+  sandbox.process = undefined;
+  sandbox.globalThis = undefined;
+  sandbox.global = undefined;
 
   const context = vm.createContext(sandbox);
 

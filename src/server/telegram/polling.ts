@@ -112,6 +112,7 @@ async function saveLastUpdateId(updateId: number): Promise<void> {
 }
 
 // Per-chat sequential processing lock
+const MAX_CHAT_LOCKS = 50;
 const chatLocks = new Map<number, Promise<void>>();
 
 async function handleMessage(
@@ -160,6 +161,11 @@ function enqueueForChat(
   username?: string,
   firstName?: string
 ): void {
+  // Queue depth limit — reject new messages if too many chats are queued
+  if (chatLocks.size >= MAX_CHAT_LOCKS && !chatLocks.has(chatId)) {
+    console.warn(`[Richy:Telegram] Queue depth limit (${MAX_CHAT_LOCKS}) reached, skipping message from chat ${chatId}`);
+    return;
+  }
   const previous = chatLocks.get(chatId) ?? Promise.resolve();
   const next = previous.then(() =>
     handleMessage(chatId, text, username, firstName).catch((err) => {

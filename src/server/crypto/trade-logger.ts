@@ -36,21 +36,31 @@ export interface TradeLogRow {
 
 export async function logTrade(entry: TradeLogEntry): Promise<string> {
   const id = nanoid();
-  await db.insert(schema.tradeHistory).values({
-    id,
-    symbol: entry.symbol,
-    side: entry.side,
-    orderType: entry.orderType,
-    amount: entry.amount,
-    price: entry.price ?? null,
-    cost: entry.cost ?? null,
-    orderId: entry.orderId ?? null,
-    source: entry.source ?? "user",
-    reasoning: entry.reasoning ?? null,
-    sentinelRunId: entry.sentinelRunId ?? null,
-    positionId: entry.positionId ?? null,
-    sandbox: entry.sandbox ?? false,
-  });
+  try {
+    await db.insert(schema.tradeHistory).values({
+      id,
+      symbol: entry.symbol,
+      side: entry.side,
+      orderType: entry.orderType,
+      amount: entry.amount,
+      price: entry.price ?? null,
+      cost: entry.cost ?? null,
+      orderId: entry.orderId ?? null,
+      source: entry.source ?? "user",
+      reasoning: entry.reasoning ?? null,
+      sentinelRunId: entry.sentinelRunId ?? null,
+      positionId: entry.positionId ?? null,
+      sandbox: entry.sandbox ?? false,
+    });
+  } catch (err: any) {
+    // CRITICAL: Trade was executed on exchange but failed to log!
+    console.error(
+      `[Richy:TradeLog] CRITICAL: Failed to log trade — trade may have been executed but is UNRECORDED! ` +
+        `Details: ${entry.side} ${entry.amount} ${entry.symbol} @ $${entry.price ?? "?"} | ` +
+        `orderId: ${entry.orderId ?? "none"} | Error: ${err.message}`
+    );
+    throw err; // Re-throw so callers know
+  }
   return id;
 }
 

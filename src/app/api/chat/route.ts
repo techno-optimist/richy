@@ -37,10 +37,16 @@ function normalizePart(part: any): any | null {
 
 export async function POST(req: Request) {
   // Rate limiting
-  const { checkRateLimit } = await import("@/server/trpc/init");
+  const { checkRateLimit, validateAuthToken } = await import("@/server/trpc/init");
   const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "127.0.0.1";
   if (!checkRateLimit(ip)) {
     return new Response("Rate limit exceeded", { status: 429 });
+  }
+
+  // Auth check
+  const authToken = req.headers.get("x-auth-token");
+  if (!validateAuthToken(authToken)) {
+    return new Response("Unauthorized", { status: 401 });
   }
 
   const { messages, conversationId } = await req.json();

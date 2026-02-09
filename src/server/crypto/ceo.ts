@@ -400,19 +400,41 @@ function finalizeParsed(raw: any): CEODirective {
   const modelName =
     getSettingSync("ai_model") || "claude-sonnet-4-20250514";
 
+  // Validate and clamp values
+  const VALID_REGIMES = new Set(["risk-on", "risk-off", "neutral", "volatile"]);
+  const VALID_BIASES = new Set(["bullish", "bearish", "neutral"]);
+
+  const riskLevel = Math.min(10, Math.max(1, Math.round(Number(raw.riskLevel) || 5)));
+  const marketRegime = VALID_REGIMES.has(raw.marketRegime) ? raw.marketRegime : "neutral";
+  const overallBias = VALID_BIASES.has(raw.overallBias) ? raw.overallBias : "neutral";
+
+  // Validate per-coin directives
+  const coins: CEODirective["coins"] = {};
+  if (raw.coins && typeof raw.coins === "object") {
+    for (const [coin, g] of Object.entries(raw.coins)) {
+      const guidance = g as any;
+      coins[coin] = {
+        bias: VALID_BIASES.has(guidance?.bias) ? guidance.bias : "neutral",
+        action: String(guidance?.action || "hold"),
+        maxPositionPct: Math.min(100, Math.max(0, Number(guidance?.maxPositionPct) || 0)),
+        notes: String(guidance?.notes || ""),
+      };
+    }
+  }
+
   return {
     generatedAt: new Date().toISOString(),
     validUntil: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     modelUsed: modelName,
-    marketRegime: raw.marketRegime || "neutral",
-    overallBias: raw.overallBias || "neutral",
-    riskLevel: raw.riskLevel ?? 5,
-    coins: raw.coins || {},
+    marketRegime,
+    overallBias,
+    riskLevel,
+    coins,
     keyLevels: raw.keyLevels || {},
-    riskGuidelines: raw.riskGuidelines || "",
-    avoid: raw.avoid || [],
-    escalationTriggers: raw.escalationTriggers || [],
-    summary: raw.summary || "",
+    riskGuidelines: String(raw.riskGuidelines || ""),
+    avoid: Array.isArray(raw.avoid) ? raw.avoid.map(String) : [],
+    escalationTriggers: Array.isArray(raw.escalationTriggers) ? raw.escalationTriggers.map(String) : [],
+    summary: String(raw.summary || ""),
   };
 }
 

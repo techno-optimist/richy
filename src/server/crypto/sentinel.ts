@@ -8,13 +8,14 @@ import { computeAllIndicators, type TechnicalIndicators } from "./analysis";
 import { getOpenPositionSummaries, type PositionSummary, openPosition, closePosition, getPositionForSymbol } from "./positions";
 import { getRecentTrades, getDailyTradeStats, logTrade } from "./trade-logger";
 import { getExchange, isTradingEnabled, getMaxTradeUsd } from "./client";
-import { firecrawlSearch, fetchRedditSentiment, fetchCryptoNews, type FirecrawlResult, type RedditPost, type CryptoNewsItem } from "./sources";
+import { webSearch, fetchRedditSentiment, fetchCryptoNews, type WebSearchResult, type RedditPost, type CryptoNewsItem } from "./sources";
 import { getCEODirective, formatDirectiveForSentinel, shouldEscalate, runCEOBriefing } from "./ceo";
 
 let sentinelTimer: ReturnType<typeof setInterval> | null = null;
 let sentinelInitialTimeout: ReturnType<typeof setTimeout> | null = null;
 let sentinelConversationId: string | null = null;
 let isRunning = false;
+let dailyStateLock = false;
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -27,7 +28,7 @@ export interface SentinelContext {
   dailyStats: Awaited<ReturnType<typeof getDailyTradeStats>>;
   coinList: string[];
   sourceList: string[];
-  webResults: FirecrawlResult[];
+  webResults: WebSearchResult[];
   reddit: RedditPost[];
   news: CryptoNewsItem[];
 }
@@ -122,10 +123,10 @@ export async function gatherSentinelContext(): Promise<SentinelContext> {
         winners: 0,
         losers: 0,
       })),
-      // Firecrawl: one search per coin
+      // Web search: one DuckDuckGo search per coin (free, no API key)
       Promise.all(
         coinList.map((c) =>
-          firecrawlSearch(`${c} crypto sentiment analysis today`, 3).catch(() => [])
+          webSearch(`${c} crypto sentiment analysis today`, 3).catch(() => [])
         )
       ).then((results) => results.flat()),
       // Reddit: direct JSON API
@@ -159,6 +160,23 @@ export async function gatherSentinelContext(): Promise<SentinelContext> {
     reddit,
     news,
   };
+}
+
+// ─── Sanitize external text (prevent prompt injection) ────────────
+
+function sanitizeExternalText(text: string, maxLength: number = 500): string {
+  if (!text) return "";
+  // Truncate
+  let cleaned = text.slice(0, maxLength);
+  // Strip lines that look like prompt injection attempts
+  const INJECTION_PATTERNS = /\b(IGNORE|SYSTEM|INSTRUCTION|ADMIN|OVERRIDE|FORGET|DISREGARD|YOU\s+ARE|PRETEND|ACT\s+AS)\b/i;
+  cleaned = cleaned
+    .split("\n")
+    .filter((line) => !INJECTION_PATTERNS.test(line))
+    .join("\n");
+  // Strip code blocks that could contain executable-looking content
+  cleaned = cleaned.replace(/```[\s\S]*?```/g, "[code block removed]");
+  return cleaned.trim();
 }
 
 // ─── Step 2: Build prompt (all data pre-fetched, no tool references) ─
@@ -222,43 +240,41 @@ function buildSentinelPrompt(ctx: SentinelContext): {
     }
   }
 
-  // ─── Web research (Firecrawl) ────────────────────────────
+  // ─── Web research (DuckDuckGo) — sanitized ─────────────────
   let webSection = "\n## Web Research\n";
   if (ctx.webResults.length === 0) {
     webSection += "No web results available.\n";
   } else {
     for (const r of ctx.webResults) {
-      webSection += `### ${r.title}\n`;
+      webSection += `### ${sanitizeExternalText(r.title || "", 200)}\n`;
       webSection += `Source: ${r.url}\n`;
-      if (r.markdown) {
-        webSection += r.markdown + "\n\n";
-      } else if (r.description) {
-        webSection += r.description + "\n\n";
+      if (r.snippet) {
+        webSection += sanitizeExternalText(r.snippet, 500) + "\n\n";
       }
     }
   }
 
-  // ─── Reddit sentiment ────────────────────────────────────
+  // ─── Reddit sentiment — sanitized ───────────────────────────
   let redditSection = "\n## Reddit Sentiment\n";
   if (ctx.reddit.length === 0) {
     redditSection += "No Reddit data available.\n";
   } else {
     for (const post of ctx.reddit.slice(0, 10)) {
-      redditSection += `- [r/${post.subreddit} | Score: ${post.score} | ${post.numComments} comments] "${post.title}"\n`;
+      redditSection += `- [r/${post.subreddit} | Score: ${post.score} | ${post.numComments} comments] "${sanitizeExternalText(post.title, 200)}"\n`;
       if (post.selftext) {
-        redditSection += `  > ${post.selftext}\n`;
+        redditSection += `  > ${sanitizeExternalText(post.selftext, 300)}\n`;
       }
     }
   }
 
-  // ─── Crypto news ─────────────────────────────────────────
+  // ─── Crypto news — sanitized ─────────────────────────────────
   let newsSection = "\n## Crypto News\n";
   if (ctx.news.length === 0) {
     newsSection += "No news data available.\n";
   } else {
     for (const item of ctx.news) {
       const ago = item.publishedAt ? formatTimeAgo(new Date(item.publishedAt)) : "";
-      newsSection += `- [${item.source}${ago ? ", " + ago : ""}] "${item.title}" (positive: ${item.votesPositive}, negative: ${item.votesNegative})\n`;
+      newsSection += `- [${sanitizeExternalText(item.source || "news", 50)}${ago ? ", " + ago : ""}] "${sanitizeExternalText(item.title, 200)}" (positive: ${item.votesPositive}, negative: ${item.votesNegative})\n`;
     }
   }
 
@@ -480,10 +496,20 @@ async function executeSentinelTrade(
       }
     }
 
-    // Update daily state with trade count and realized P&L
-    dailyState.trades_today += 1;
-    dailyState.pnl_today += realizedPnl;
-    await saveDailyState(dailyState);
+    // Update daily state with mutex to prevent race condition
+    while (dailyStateLock) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    dailyStateLock = true;
+    try {
+      // Re-read daily state under lock to avoid stale data
+      const freshState = getDailyState();
+      freshState.trades_today += 1;
+      freshState.pnl_today += realizedPnl;
+      await saveDailyState(freshState);
+    } finally {
+      dailyStateLock = false;
+    }
 
     console.log(`[Richy:Sentinel] Trade executed: ${side} ${amount} ${symbol} @ $${filledPrice.toFixed(2)}`);
     return `${side.toUpperCase()} ${amount} ${symbol} @ $${filledPrice.toFixed(2)}`;
@@ -639,6 +665,20 @@ async function sentinelTick(): Promise<void> {
     // Step 1: Gather all context (pre-fetch web data)
     console.log("[Richy:Sentinel] Gathering context + fetching sources...");
     const ctx = await gatherSentinelContext();
+
+    // Context quality check: if portfolio is empty but we expect data, skip
+    if (ctx.portfolio.length === 0 && Object.keys(ctx.indicators).length === 0) {
+      console.warn("[Richy:Sentinel] Degraded context: no portfolio or indicators available. Skipping analysis.");
+      await saveSentinelRun({
+        indicators: {},
+        portfolio: [],
+        parsed: null,
+        fullText: "",
+        durationMs: Date.now() - startTime,
+        error: "Degraded context — no portfolio or indicator data",
+      }).catch(() => {});
+      return;
+    }
 
     // Step 2: Build prompt (no tool references)
     const { userMessage, systemPrompt } = buildSentinelPrompt(ctx);

@@ -29,7 +29,9 @@ function logEvolution(
 
 function resolvePath(filePath: string): string {
   const resolved = resolve(PROJECT_ROOT, filePath);
-  if (!resolved.startsWith(PROJECT_ROOT + "/")) {
+  const rel = relative(PROJECT_ROOT, resolved);
+  // Block path traversal: relative path must not start with '..' or be absolute
+  if (rel.startsWith("..") || rel.startsWith("/")) {
     throw new Error("Path must be within the project directory");
   }
   return resolved;
@@ -230,6 +232,26 @@ export const selfModifyTool: RichyToolDef = {
               output: "command is required for run_command",
             };
           }
+
+          // Command allowlist — only allow safe commands
+          const ALLOWED_PREFIXES = [
+            "npm install", "npm run", "npm test", "npm ls",
+            "npx tsc", "npx drizzle-kit",
+            "git status", "git diff", "git log", "git add", "git commit",
+            "ls", "cat", "wc", "head", "tail", "echo",
+          ];
+          const cmdTrimmed = input.command.trim();
+          const isAllowed = ALLOWED_PREFIXES.some(
+            (prefix) =>
+              cmdTrimmed === prefix || cmdTrimmed.startsWith(prefix + " ")
+          );
+          if (!isAllowed) {
+            return {
+              success: false,
+              output: `Command not allowed. Permitted commands: ${ALLOWED_PREFIXES.join(", ")}`,
+            };
+          }
+
           const result = execSync(input.command, {
             cwd: PROJECT_ROOT,
             encoding: "utf-8",

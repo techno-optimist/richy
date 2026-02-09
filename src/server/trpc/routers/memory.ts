@@ -1,5 +1,5 @@
 import { z } from "zod/v4";
-import { router, publicProcedure } from "../init";
+import { router, protectedProcedure } from "../init";
 import { schema } from "../../db";
 import { eq, desc, like, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -7,7 +7,7 @@ import { generateEmbedding } from "../../memory/embeddings";
 import { semanticSearch } from "../../memory/search";
 
 export const memoryRouter = router({
-  list: publicProcedure
+  list: protectedProcedure
     .input(
       z
         .object({
@@ -32,7 +32,7 @@ export const memoryRouter = router({
         .limit(limit);
     }),
 
-  search: publicProcedure
+  search: protectedProcedure
     .input(z.object({ query: z.string(), limit: z.number().default(20) }))
     .query(async ({ ctx, input }) => {
       // Try semantic search first
@@ -60,7 +60,7 @@ export const memoryRouter = router({
         .limit(input.limit);
     }),
 
-  create: publicProcedure
+  create: protectedProcedure
     .input(
       z.object({
         type: z.enum(["fact", "preference", "pattern", "note", "entity"]),
@@ -89,7 +89,7 @@ export const memoryRouter = router({
       return { id };
     }),
 
-  update: publicProcedure
+  update: protectedProcedure
     .input(
       z.object({
         id: z.string(),
@@ -109,7 +109,7 @@ export const memoryRouter = router({
       return { success: true };
     }),
 
-  delete: publicProcedure
+  delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db
@@ -118,7 +118,7 @@ export const memoryRouter = router({
       return { success: true };
     }),
 
-  stats: publicProcedure.query(async ({ ctx }) => {
+  stats: protectedProcedure.query(async ({ ctx }) => {
     const results = await ctx.db
       .select({
         type: schema.memories.type,

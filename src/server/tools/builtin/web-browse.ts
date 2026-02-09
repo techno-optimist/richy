@@ -1,6 +1,33 @@
 import { z } from "zod/v4";
 import * as cheerio from "cheerio";
+import { lookup } from "dns/promises";
 import type { RichyToolDef } from "../types";
+
+/** Check if an IP address is in a private/reserved range */
+function isPrivateIP(ip: string): boolean {
+  // IPv4 private/reserved ranges
+  if (ip.startsWith("127.")) return true;
+  if (ip.startsWith("10.")) return true;
+  if (ip.startsWith("192.168.")) return true;
+  if (ip.startsWith("169.254.")) return true;
+  if (ip === "0.0.0.0") return true;
+
+  // 172.16.0.0 – 172.31.255.255
+  const parts = ip.split(".");
+  if (parts[0] === "172") {
+    const second = parseInt(parts[1], 10);
+    if (second >= 16 && second <= 31) return true;
+  }
+
+  // IPv6 private/link-local
+  const lower = ip.toLowerCase();
+  if (lower === "::1" || lower === "[::1]") return true;
+  if (lower.startsWith("fd")) return true;
+  if (lower.startsWith("fe80")) return true;
+  if (lower.startsWith("fc")) return true;
+
+  return false;
+}
 
 export const webBrowseTool: RichyToolDef = {
   name: "web_browse",
@@ -28,20 +55,23 @@ export const webBrowseTool: RichyToolDef = {
         return { success: false, output: "Only http and https URLs are allowed" };
       }
       const hostname = parsed.hostname.toLowerCase();
-      if (
-        hostname === "localhost" ||
-        hostname === "0.0.0.0" ||
-        hostname === "[::1]" ||
-        hostname === "::1" ||
-        hostname.startsWith("127.") ||
-        hostname.startsWith("192.168.") ||
-        hostname.startsWith("10.") ||
-        hostname.startsWith("172.") ||
-        hostname.startsWith("169.254.") ||
-        hostname.startsWith("fd") || // IPv6 unique local
-        hostname.startsWith("fe80") // IPv6 link-local
-      ) {
+      // Quick check for obvious private hostnames
+      if (hostname === "localhost" || hostname === "0.0.0.0" || hostname === "::1" || hostname === "[::1]") {
         return { success: false, output: "Cannot browse internal/private network addresses" };
+      }
+      // Check if hostname is already an IP
+      if (isPrivateIP(hostname)) {
+        return { success: false, output: "Cannot browse internal/private network addresses" };
+      }
+      // DNS resolution check — resolve hostname to IP and verify it's not private
+      // This prevents DNS rebinding attacks
+      try {
+        const resolved = await lookup(hostname);
+        if (isPrivateIP(resolved.address)) {
+          return { success: false, output: `DNS for ${hostname} resolved to private IP ${resolved.address} — blocked` };
+        }
+      } catch {
+        // DNS resolution failed — let fetch handle it
       }
 
       const response = await fetch(input.url, {

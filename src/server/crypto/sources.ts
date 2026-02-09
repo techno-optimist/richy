@@ -2,11 +2,10 @@ import { getSettingSync } from "../db/settings";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
-export interface FirecrawlResult {
+export interface WebSearchResult {
   title: string;
   url: string;
-  description: string;
-  markdown: string;
+  snippet: string;
 }
 
 export interface RedditPost {
@@ -29,60 +28,56 @@ export interface CryptoNewsItem {
   votesImportant: number;
 }
 
-// ─── Firecrawl ──────────────────────────────────────────────────────
+// ─── Web Search (DuckDuckGo — free, no API key) ────────────────────
 
 /**
- * Search the web via Firecrawl API.
- * Returns search results with scraped markdown content included.
+ * Search the web via DuckDuckGo HTML scraping.
+ * Zero cost, no API key required.
  */
-export async function firecrawlSearch(
+export async function webSearch(
   query: string,
   limit: number = 5
-): Promise<FirecrawlResult[]> {
-  const apiKey = getSettingSync("firecrawl_api_key");
-  if (!apiKey) return [];
-
+): Promise<WebSearchResult[]> {
   try {
-    const response = await fetch("https://api.firecrawl.dev/v2/search", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        query,
-        limit,
-        scrapeOptions: {
-          formats: ["markdown"],
-          onlyMainContent: true,
+    const response = await fetch(
+      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (compatible; RichyBot/1.0; +http://localhost)",
         },
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
+        signal: AbortSignal.timeout(10000),
+      }
+    );
 
     if (!response.ok) {
-      console.error(`[Richy:Sources] Firecrawl search failed: HTTP ${response.status}`);
+      console.error(`[Richy:Sources] DDG search failed: HTTP ${response.status}`);
       return [];
     }
 
-    const json = await response.json();
-    if (!json.success || !json.data) return [];
+    const html = await response.text();
+    const results: WebSearchResult[] = [];
+    const resultRegex =
+      /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)<\/a>[\s\S]*?<a[^>]*class="result__snippet"[^>]*>(.*?)<\/a>/g;
 
-    const results: FirecrawlResult[] = [];
-    const items = Array.isArray(json.data) ? json.data : json.data.web || [];
+    let match;
+    while ((match = resultRegex.exec(html)) !== null && results.length < limit) {
+      let url = match[1];
+      const uddg = url.match(/uddg=([^&]+)/);
+      if (uddg) {
+        url = decodeURIComponent(uddg[1]);
+      }
 
-    for (const item of items) {
       results.push({
-        title: item.title || "Untitled",
-        url: item.url || "",
-        description: item.description || "",
-        markdown: (item.markdown || "").substring(0, 2000),
+        title: match[2].replace(/<[^>]*>/g, "").trim(),
+        url,
+        snippet: match[3].replace(/<[^>]*>/g, "").trim(),
       });
     }
 
     return results;
   } catch (err: any) {
-    console.error(`[Richy:Sources] Firecrawl error: ${err.message}`);
+    console.error(`[Richy:Sources] Web search error: ${err.message}`);
     return [];
   }
 }

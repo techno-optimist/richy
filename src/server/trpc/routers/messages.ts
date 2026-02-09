@@ -1,11 +1,11 @@
 import { z } from "zod/v4";
-import { router, publicProcedure } from "../init";
+import { router, protectedProcedure } from "../init";
 import { schema } from "../../db";
 import { eq, desc } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
 export const messagesRouter = router({
-  listByConversation: publicProcedure
+  listByConversation: protectedProcedure
     .input(
       z.object({
         conversationId: z.string(),
@@ -22,7 +22,7 @@ export const messagesRouter = router({
       return results;
     }),
 
-  save: publicProcedure
+  save: protectedProcedure
     .input(
       z.object({
         conversationId: z.string(),
@@ -51,7 +51,7 @@ export const messagesRouter = router({
       return { id };
     }),
 
-  delete: publicProcedure
+  delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db

@@ -10,6 +10,7 @@ let lastSeenRowId = "0";
 let imessageConversationId: string | null = null;
 
 // Message queue + processing lock
+const MAX_QUEUE_SIZE = 50;
 const messageQueue: string[] = [];
 let processing = false;
 let errorBackoffMs = 0;
@@ -233,15 +234,30 @@ async function pollTick(): Promise<void> {
       await saveLastSeenRowId(maxRowId);
 
       // Filter out echo messages (our own sent messages bouncing back via iCloud sync)
-      const incoming = newMessages.filter((msg) => !isEchoMessage(msg.text));
+      // Also filter by sender allowlist — only process from configured user_phone
+      const normalizedUserPhone = userPhone.replace(/[\s\-\(\)\.]/g, "").slice(-10);
+      const incoming = newMessages.filter((msg) => {
+        if (isEchoMessage(msg.text)) return false;
+        // Sender allowlist: only accept from the configured user phone
+        const normalizedSender = msg.sender?.replace(/[\s\-\(\)\.]/g, "").slice(-10) || "";
+        if (normalizedSender && normalizedUserPhone && normalizedSender !== normalizedUserPhone) {
+          console.warn(`[Richy:iMessage] Rejected message from unknown sender: ${msg.sender}`);
+          return false;
+        }
+        return true;
+      });
       if (incoming.length === 0) return;
 
       console.log(
         `[Richy:iMessage] Found ${incoming.length} new message(s)${incoming.length < newMessages.length ? ` (filtered ${newMessages.length - incoming.length} echo(es))` : ""}`
       );
 
-      // Enqueue messages
+      // Enqueue messages (with queue size limit)
       for (const msg of incoming) {
+        if (messageQueue.length >= MAX_QUEUE_SIZE) {
+          console.warn("[Richy:iMessage] Queue full — dropping oldest messages");
+          messageQueue.shift(); // Drop oldest
+        }
         messageQueue.push(msg.text);
       }
 

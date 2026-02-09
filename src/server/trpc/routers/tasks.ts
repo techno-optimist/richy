@@ -1,11 +1,11 @@
 import { z } from "zod/v4";
-import { router, publicProcedure } from "../init";
+import { router, protectedProcedure } from "../init";
 import { schema } from "../../db";
 import { eq, desc } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
 export const tasksRouter = router({
-  list: publicProcedure
+  list: protectedProcedure
     .input(
       z
         .object({
@@ -28,7 +28,7 @@ export const tasksRouter = router({
       return query.all();
     }),
 
-  get: publicProcedure
+  get: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       const result = await ctx.db
@@ -39,7 +39,7 @@ export const tasksRouter = router({
       return result[0] || null;
     }),
 
-  create: publicProcedure
+  create: protectedProcedure
     .input(
       z.object({
         name: z.string().min(1),
@@ -65,7 +65,7 @@ export const tasksRouter = router({
       return { id };
     }),
 
-  update: publicProcedure
+  update: protectedProcedure
     .input(
       z.object({
         id: z.string(),
@@ -98,7 +98,7 @@ export const tasksRouter = router({
       return { success: true };
     }),
 
-  delete: publicProcedure
+  delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db

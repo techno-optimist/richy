@@ -117,6 +117,13 @@ export async function sendIMessage(
   recipient: string,
   message: string
 ): Promise<void> {
+  // Validate recipient format: must be a phone number or email
+  const phonePattern = /^[\+\d\s\-\.\(\)]+$/;
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!phonePattern.test(recipient) && !emailPattern.test(recipient)) {
+    throw new Error("Invalid recipient format. Must be a phone number or email address.");
+  }
+
   const escapedRecipient = escapeAppleScript(recipient);
   const escapedMessage = escapeAppleScript(message);
 

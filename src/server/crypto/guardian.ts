@@ -8,6 +8,50 @@ import { closePosition, updatePositionLevels } from "./positions";
 let guardianTimer: ReturnType<typeof setInterval> | null = null;
 let consecutiveFailures = 0;
 
+async function triggerCircuitBreaker(reason: string): Promise<void> {
+  // Disable trading in DB
+  try {
+    db.insert(schema.settings)
+      .values({ key: "crypto_trading_enabled", value: "off", updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: schema.settings.key,
+        set: { value: "off", updatedAt: new Date() },
+      })
+      .run();
+    console.error(`[Richy:Guardian] CIRCUIT BREAKER: Trading disabled. Reason: ${reason}`);
+  } catch (err: any) {
+    console.error(`[Richy:Guardian] Failed to disable trading in DB: ${err.message}`);
+  }
+
+  // Notify user
+  const notifyText = `[Guardian CIRCUIT BREAKER] Trading has been automatically DISABLED. Reason: ${reason}. Re-enable manually in Settings.`;
+
+  // Telegram notification
+  if (getSettingSync("notify_telegram") === "on") {
+    const telegramToken = getSettingSync("telegram_bot_token");
+    if (telegramToken) {
+      try {
+        const { sendTelegramMessage } = await import("../telegram/bot");
+        const chats = db.select().from(schema.telegramState).all().filter((row) => row.chatId);
+        if (chats.length > 0) {
+          await sendTelegramMessage(chats[0].chatId!, notifyText);
+        }
+      } catch {}
+    }
+  }
+
+  // iMessage notification
+  if (getSettingSync("notify_imessage") === "on") {
+    const rawPhone = getSettingSync("user_phone");
+    if (rawPhone) {
+      try {
+        const { sendIMessage } = await import("../imessage/applescript");
+        await sendIMessage(String(rawPhone), notifyText);
+      } catch {}
+    }
+  }
+}
+
 async function guardianTick(): Promise<void> {
   // Get all open positions with SL or TP set
   const positions = db
@@ -29,7 +73,8 @@ async function guardianTick(): Promise<void> {
     consecutiveFailures++;
     console.error(`[Richy:Guardian] Cannot get exchange (failure #${consecutiveFailures}): ${err.message}`);
     if (consecutiveFailures >= 3) {
-      console.error("[Richy:Guardian] CRITICAL: 3+ consecutive failures. SL/TP protection may be offline!");
+      console.error("[Richy:Guardian] CRITICAL: 3+ consecutive failures — disabling trading as circuit breaker!");
+      await triggerCircuitBreaker("Exchange connection failed 3+ times");
     }
     return;
   }
@@ -53,7 +98,8 @@ async function guardianTick(): Promise<void> {
     consecutiveFailures++;
     console.error(`[Richy:Guardian] No prices fetched (failure #${consecutiveFailures})`);
     if (consecutiveFailures >= 3) {
-      console.error("[Richy:Guardian] CRITICAL: 3+ consecutive failures. SL/TP protection may be offline!");
+      console.error("[Richy:Guardian] CRITICAL: 3+ consecutive failures — disabling trading as circuit breaker!");
+      await triggerCircuitBreaker("Price fetch failed 3+ times");
     }
     return;
   }

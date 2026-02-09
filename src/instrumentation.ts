@@ -3,6 +3,14 @@ export async function register() {
     const { ensureDatabase } = await import("./server/db/migrate");
     ensureDatabase();
 
+    // Run DB retention cleanup on startup
+    const { cleanupOldRecords } = await import("./server/db/cleanup");
+    cleanupOldRecords();
+
+    // Eagerly initialize & print auth token so the user sees it immediately
+    const { getAuthToken } = await import("./server/trpc/init");
+    getAuthToken();
+
     // Start autonomous systems after a delay for server warmup
     setTimeout(async () => {
       try {

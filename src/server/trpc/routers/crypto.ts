@@ -1,5 +1,5 @@
 import { z } from "zod/v4";
-import { router, publicProcedure } from "../init";
+import { router, protectedProcedure } from "../init";
 import { getRecentSentinelRuns, getSentinelRun } from "../../crypto/sentinel";
 import { getRecentTrades, getDailyTradeStats } from "../../crypto/trade-logger";
 import { getOpenPositionSummaries } from "../../crypto/positions";
@@ -8,7 +8,7 @@ import { getSettingSync } from "../../db/settings";
 import { db, schema } from "../../db";
 
 export const cryptoRouter = router({
-  sentinelRuns: publicProcedure
+  sentinelRuns: protectedProcedure
     .input(z.object({ limit: z.number().default(20) }))
     .query(async ({ input }) => {
       const runs = await getRecentSentinelRuns(input.limit);
@@ -20,7 +20,7 @@ export const cryptoRouter = router({
       }));
     }),
 
-  sentinelRun: publicProcedure
+  sentinelRun: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input }) => {
       const run = await getSentinelRun(input.id);
@@ -34,21 +34,21 @@ export const cryptoRouter = router({
       };
     }),
 
-  positions: publicProcedure.query(async () => {
+  positions: protectedProcedure.query(async () => {
     return getOpenPositionSummaries();
   }),
 
-  trades: publicProcedure
+  trades: protectedProcedure
     .input(z.object({ limit: z.number().default(30) }))
     .query(async ({ input }) => {
       return getRecentTrades(input.limit);
     }),
 
-  dailyStats: publicProcedure.query(async () => {
+  dailyStats: protectedProcedure.query(async () => {
     return getDailyTradeStats();
   }),
 
-  config: publicProcedure.query(async () => {
+  config: protectedProcedure.query(async () => {
     return {
       enabled: getSettingSync("crypto_sentinel_enabled") === "on",
       interval: parseInt(getSettingSync("crypto_sentinel_interval") || "30", 10),
@@ -71,17 +71,17 @@ export const cryptoRouter = router({
   }),
 
   // ─── CEO Directive ───────────────────────────────────────────
-  ceoDirective: publicProcedure.query(async () => {
+  ceoDirective: protectedProcedure.query(async () => {
     const directive = getCEODirective();
     return directive;
   }),
 
-  triggerCEOBriefing: publicProcedure.mutation(async () => {
+  triggerCEOBriefing: protectedProcedure.mutation(async () => {
     const result = await runCEOBriefing();
     return result;
   }),
 
-  updateConfig: publicProcedure
+  updateConfig: protectedProcedure
     .input(z.object({ settings: z.record(z.string(), z.unknown()) }))
     .mutation(async ({ input }) => {
       // Whitelist: only allow sentinel/trading config keys

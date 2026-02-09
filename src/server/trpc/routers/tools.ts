@@ -1,5 +1,5 @@
 import { z } from "zod/v4";
-import { router, publicProcedure } from "../init";
+import { router, protectedProcedure } from "../init";
 import { schema } from "../../db";
 import { eq } from "drizzle-orm";
 import { builtinTools } from "../../tools/registry";
@@ -16,7 +16,7 @@ type ToolInfo = {
 };
 
 export const toolsRouter = router({
-  list: publicProcedure.query(async ({ ctx }): Promise<ToolInfo[]> => {
+  list: protectedProcedure.query(async ({ ctx }): Promise<ToolInfo[]> => {
     const builtins: ToolInfo[] = builtinTools.map((t) => ({
       id: t.name,
       name: t.name,
@@ -56,7 +56,7 @@ export const toolsRouter = router({
     return [...builtins, ...custom];
   }),
 
-  toggle: publicProcedure
+  toggle: protectedProcedure
     .input(z.object({ id: z.string(), enabled: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db
@@ -66,7 +66,7 @@ export const toolsRouter = router({
       return { success: true };
     }),
 
-  delete: publicProcedure
+  delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db

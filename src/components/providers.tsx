@@ -31,6 +31,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
         httpBatchLink({
           url: `${getBaseUrl()}/api/trpc`,
           transformer: superjson,
+          headers() {
+            const token =
+              typeof window !== "undefined"
+                ? localStorage.getItem("richy_auth_token")
+                : null;
+            return token ? { "x-auth-token": token } : {};
+          },
         }),
       ],
     })

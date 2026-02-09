@@ -47,7 +47,6 @@ export default function SettingsPage() {
   const [showBotToken, setShowBotToken] = useState(false);
   const [showCryptoKey, setShowCryptoKey] = useState(false);
   const [showCryptoSecret, setShowCryptoSecret] = useState(false);
-  const [showFirecrawlKey, setShowFirecrawlKey] = useState(false);
   const [showCryptoPanicKey, setShowCryptoPanicKey] = useState(false);
   const [formState, setFormState] = useState({
     buddy_name: "Richy",
@@ -86,7 +85,6 @@ export default function SettingsPage() {
     crypto_guardian_interval: "120",
     crypto_trailing_stop_enabled: "off",
     crypto_trailing_stop_pct: "3",
-    firecrawl_api_key: "",
     crypto_panic_api_key: "",
   });
 
@@ -163,7 +161,6 @@ export default function SettingsPage() {
         crypto_trailing_stop_pct: String(
           allSettings.crypto_trailing_stop_pct || "3"
         ),
-        firecrawl_api_key: (allSettings.firecrawl_api_key as string) || "",
         crypto_panic_api_key: (allSettings.crypto_panic_api_key as string) || "",
       });
     }
@@ -948,39 +945,6 @@ export default function SettingsPage() {
                   />
                   <p className="text-xs text-muted-foreground">
                     Comma-separated: reddit, twitter, news
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Firecrawl API Key</Label>
-                  <div className="relative">
-                    <Input
-                      type={showFirecrawlKey ? "text" : "password"}
-                      value={formState.firecrawl_api_key}
-                      onChange={(e) =>
-                        setFormState((s) => ({
-                          ...s,
-                          firecrawl_api_key: e.target.value,
-                        }))
-                      }
-                      placeholder="fc-..."
-                    />
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-1 top-1 h-7 w-7"
-                      onClick={() => setShowFirecrawlKey(!showFirecrawlKey)}
-                    >
-                      {showFirecrawlKey ? (
-                        <EyeOff className="h-3.5 w-3.5" />
-                      ) : (
-                        <Eye className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    From firecrawl.dev — enables web search + content extraction
-                    for sentinel
                   </p>
                 </div>
 

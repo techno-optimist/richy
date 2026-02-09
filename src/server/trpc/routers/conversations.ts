@@ -1,11 +1,11 @@
 import { z } from "zod/v4";
-import { router, publicProcedure } from "../init";
+import { router, protectedProcedure } from "../init";
 import { schema } from "../../db";
 import { eq, desc, like, and } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
 export const conversationsRouter = router({
-  list: publicProcedure
+  list: protectedProcedure
     .input(
       z
         .object({
@@ -30,7 +30,7 @@ export const conversationsRouter = router({
       return results;
     }),
 
-  get: publicProcedure
+  get: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       const result = await ctx.db
@@ -41,7 +41,7 @@ export const conversationsRouter = router({
       return result[0] ?? null;
     }),
 
-  create: publicProcedure
+  create: protectedProcedure
     .input(
       z
         .object({
@@ -60,7 +60,7 @@ export const conversationsRouter = router({
       return { id };
     }),
 
-  update: publicProcedure
+  update: protectedProcedure
     .input(
       z.object({
         id: z.string(),
@@ -78,7 +78,7 @@ export const conversationsRouter = router({
       return { success: true };
     }),
 
-  delete: publicProcedure
+  delete: protectedProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await ctx.db
@@ -87,7 +87,7 @@ export const conversationsRouter = router({
       return { success: true };
     }),
 
-  search: publicProcedure
+  search: protectedProcedure
     .input(z.object({ query: z.string() }))
     .query(async ({ ctx, input }) => {
       const results = await ctx.db

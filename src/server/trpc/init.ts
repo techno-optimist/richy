@@ -1,5 +1,6 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import { db, schema } from "../db";
+import { eq } from "drizzle-orm";
 import superjson from "superjson";
 import crypto from "crypto";
 
@@ -10,17 +11,22 @@ function getOrCreateAuthToken(): string {
   const existing = db
     .select()
     .from(schema.settings)
-    .where(
-      require("drizzle-orm").eq(schema.settings.key, AUTH_TOKEN_KEY)
-    )
+    .where(eq(schema.settings.key, AUTH_TOKEN_KEY))
     .get();
 
   if (existing?.value) {
+    let token: string;
     try {
-      return JSON.parse(existing.value);
+      token = JSON.parse(existing.value);
     } catch {
-      return existing.value;
+      token = existing.value;
     }
+    console.log("\n" + "=".repeat(60));
+    console.log("[Richy:Auth] Dashboard auth token:");
+    console.log(`  ${token}`);
+    console.log("  Paste this token in the browser to unlock dashboard.");
+    console.log("=".repeat(60) + "\n");
+    return token;
   }
 
   // Generate new token on first run
@@ -34,25 +40,29 @@ function getOrCreateAuthToken(): string {
     .run();
 
   console.log("\n" + "=".repeat(60));
-  console.log("[Richy:Auth] Dashboard auth token generated:");
+  console.log("[Richy:Auth] New dashboard auth token generated:");
   console.log(`  ${token}`);
+  console.log("  Paste this token in the browser to unlock dashboard.");
   console.log("=".repeat(60) + "\n");
 
   return token;
 }
 
-let cachedToken: string | null = null;
+// Eagerly initialize on module load so the token is printed on startup
+const cachedToken: string = getOrCreateAuthToken();
 
 export function getAuthToken(): string {
-  if (!cachedToken) {
-    cachedToken = getOrCreateAuthToken();
-  }
   return cachedToken;
 }
 
 export function validateAuthToken(token: string | null | undefined): boolean {
   if (!token) return false;
-  return token === getAuthToken();
+  return token === cachedToken;
+}
+
+/** Return the full token — only call from already-authenticated contexts */
+export function getAuthTokenForDisplay(): string {
+  return cachedToken;
 }
 
 // ─── Rate limiting ─────────────────────────────────────────────────

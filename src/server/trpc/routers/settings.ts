@@ -1,5 +1,5 @@
 import { z } from "zod/v4";
-import { router, publicProcedure } from "../init";
+import { router, publicProcedure, protectedProcedure, validateAuthToken } from "../init";
 import { schema } from "../../db";
 import { eq } from "drizzle-orm";
 
@@ -16,7 +16,13 @@ const SENSITIVE_KEYS = new Set([
 ]);
 
 export const settingsRouter = router({
-  get: publicProcedure
+  // Public endpoint — validates a token without requiring prior authentication.
+  // Returns { valid: true/false } only; leaks no data.
+  checkToken: publicProcedure.query(({ ctx }) => {
+    return { valid: validateAuthToken(ctx.authToken) };
+  }),
+
+  get: protectedProcedure
     .input(z.object({ key: z.string() }))
     .query(async ({ ctx, input }) => {
       // Never return the auth token via API
@@ -34,7 +40,7 @@ export const settingsRouter = router({
       }
     }),
 
-  getAll: publicProcedure.query(async ({ ctx }) => {
+  getAll: protectedProcedure.query(async ({ ctx }) => {
     const results = await ctx.db.select().from(schema.settings);
     const record: Record<string, unknown> = {};
     for (const row of results) {
@@ -54,7 +60,7 @@ export const settingsRouter = router({
   }),
 
   // Get a single sensitive setting (for password eye-toggle in settings UI)
-  getSecret: publicProcedure
+  getSecret: protectedProcedure
     .input(z.object({ key: z.string() }))
     .query(async ({ ctx, input }) => {
       if (!SENSITIVE_KEYS.has(input.key)) {
@@ -74,7 +80,7 @@ export const settingsRouter = router({
       }
     }),
 
-  set: publicProcedure
+  set: protectedProcedure
     .input(z.object({ key: z.string(), value: z.unknown() }))
     .mutation(async ({ ctx, input }) => {
       // Prevent setting auth token via API
@@ -95,7 +101,7 @@ export const settingsRouter = router({
       return { success: true };
     }),
 
-  setBatch: publicProcedure
+  setBatch: protectedProcedure
     .input(z.object({ settings: z.record(z.string(), z.unknown()) }))
     .mutation(async ({ ctx, input }) => {
       for (const [key, val] of Object.entries(input.settings)) {

@@ -26,11 +26,14 @@ export function destroyBot(): void {
 
 /**
  * Check if a Telegram user is allowed to interact with the bot.
- * If no allowed_users are configured, ALL users are allowed.
+ * DEFAULT DENY: if no allowed_users are configured, NO users are allowed.
  */
 export function isUserAllowed(userId: number, username?: string): boolean {
   const allowedRaw = getSettingSync("telegram_allowed_users");
-  if (!allowedRaw || allowedRaw.trim() === "") return true;
+  if (!allowedRaw || allowedRaw.trim() === "") {
+    console.warn(`[Richy:Telegram] Rejected user ${userId} (${username || "unknown"}) — no telegram_allowed_users configured`);
+    return false;
+  }
 
   const allowed = allowedRaw
     .split(",")

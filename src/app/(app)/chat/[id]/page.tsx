@@ -200,6 +200,12 @@ export default function ChatConversationPage() {
       new DefaultChatTransport({
         api: "/api/chat",
         body: { conversationId },
+        headers: {
+          "x-auth-token":
+            typeof window !== "undefined"
+              ? localStorage.getItem("richy_auth_token") || ""
+              : "",
+        },
       }),
     [conversationId]
   );
